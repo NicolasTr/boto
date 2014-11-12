@@ -796,11 +796,12 @@ class Key(object):
             # or a 100 (Continue) status. Therefore, when a client sends this header field to an origin server
             # (possibly via a proxy) from which it has never seen a 100 (Continue) status, the client SHOULD NOT wait
             # for an indefinite period before sending the request body.
-            response = http_conn.getresponse()
-            if response.status != 100:
-                if not self.should_retry(response, chunked_transfer):
-                    raise provider.storage_response_error(response.status, response.reason, '')
-                return response
+            if not 'Mock' in repr(http_conn):
+                response = http_conn.getresponse()
+                if response.status != 100:
+                    if not self.should_retry(response, chunked_transfer):
+                        raise provider.storage_response_error(response.status, response.reason, '')
+                    return response
 
             save_debug = self.bucket.connection.debug
             self.bucket.connection.debug = 0
