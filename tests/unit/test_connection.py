@@ -19,6 +19,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 #
+import io
 import os
 import socket
 
@@ -30,6 +31,25 @@ from boto.compat import json, parse_qs
 from boto.connection import AWSQueryConnection, AWSAuthConnection, HTTPRequest
 from boto.exception import BotoServerError
 from boto.regioninfo import RegionInfo
+
+
+class FakeSocket(object):
+    def __init__(self, read_data, fileclass=io.BytesIO):
+        self.sent_data = b''
+        self.read_data = read_data
+        self.fileclass = fileclass
+        self.file = None
+
+    def sendall(self, data):
+        self.sent_data += data
+
+    def makefile(self, mode, bufsize=None):
+        if self.file is None:
+            self.file = self.fileclass(self.read_data)
+        return self.file
+
+    def close(self):
+        pass
 
 
 class TestListParamsSerialization(unittest.TestCase):
@@ -202,6 +222,26 @@ class TestAWSAuthConnection(unittest.TestCase):
             data='', host=None)
         conn.set_host_header(request)
         self.assertEqual(request.headers['Host'], 'testhost:8773')
+
+    def test_100_continue_returned(self):
+
+        aws_connection = AWSAuthConnection(
+            'mockservice.cc-zone-1.amazonaws.com',
+            aws_access_key_id='access_key',
+            aws_secret_access_key='secret',
+        )
+        request = aws_connection.build_base_http_request(method='HEAD', path='/', auth_path=None)
+        http_connection = aws_connection.get_http_connection(request.host, request.port, False)
+
+        fake_socket = FakeSocket(b'HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\n')
+        http_connection.sock = fake_socket
+        http_connection.request(request.method, request.path, request.body, request.headers)
+
+        response = http_connection.getresponse()
+        self.assertEqual(response.status, 100)
+
+        response = http_connection.getresponse()
+        self.assertEqual(response.status, 200)
 
 
 class V4AuthConnection(AWSAuthConnection):
